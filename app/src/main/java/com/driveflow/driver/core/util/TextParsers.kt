@@ -35,7 +35,11 @@ object TextParsers {
                 // Arabic UI text carries them and they break unit/number matching.
                 '\u200E', '\u200F', '\u061C', '\u0640' -> Unit
                 in '\u202A'..'\u202E', in '\u2066'..'\u2069' -> Unit
-                else -> sb.append(char)
+                else -> {
+                    // Digits of any script (Arabic-Indic, Persian, Devanagari, Bengali, ...) -> ASCII
+                    val digit = if (char.code > 127) Character.digit(char, 10) else -1
+                    if (digit >= 0) sb.append(('0'.code + digit).toChar()) else sb.append(char)
+                }
             }
         }
         return sb.toString().trim()

@@ -12,6 +12,7 @@ import com.driveflow.driver.core.model.RoadState
 import com.driveflow.driver.core.model.TripDistanceOcr
 import com.driveflow.driver.core.model.TripKmResult
 import com.driveflow.driver.core.util.TextParsers
+import com.driveflow.driver.reader.adaptive.ContentScanner
 import com.driveflow.driver.reader.model.ReaderConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -181,13 +182,21 @@ class InDriveReader(
         // Pickup distance
         val pickupDistText = getNodeTextWithFallback(bottomSheet, "detail_pickup_distance")
         val pickupResult = TextParsers.parseDistance(pickupDistText)
-        val pickupKm = pickupResult?.km
+        val pickupKmById = pickupResult?.km
 
         // Rider trips & rating
         val tripsText = getNodeTextWithFallback(bottomSheet, "detail_rider_trips")
-        val riderTrips = TextParsers.parseTrips(tripsText)
+        val riderTripsById = TextParsers.parseTrips(tripsText)
         val ratingText = getNodeTextWithFallback(bottomSheet, "detail_rider_rating")
-        val riderRating = TextParsers.parseRating(ratingText)
+        val riderRatingById = TextParsers.parseRating(ratingText)
+
+        // Anything the ids missed (app update renamed them) is worked out from the screen content itself
+        val scanned = if (fare == null || pickupKmById == null || riderRatingById == null || riderTripsById == null) {
+            ContentScanner.interpret(ContentScanner.collect(bottomSheet))
+        } else null
+        val pickupKm = pickupKmById ?: scanned?.pickupKm
+        val riderRating = riderRatingById ?: scanned?.rating
+        val riderTrips = riderTripsById ?: scanned?.trips
 
         // Age
         val ageText = getNodeTextWithFallback(bottomSheet, "detail_request_age")
@@ -208,7 +217,7 @@ class InDriveReader(
         val offerBtnText = getNodeTextWithFallback(bottomSheet, "detail_offer_price_button")
         val (offeredPrice, _) = TextParsers.parseFare(offerBtnText)
 
-        val effectiveFare = fare ?: offeredPrice
+        val effectiveFare = fare ?: scanned?.fare ?: offeredPrice
         // totalKm stays null on purpose: RulesEngine computes pickup + trip once tripKm is read from the map.
         val key = computeCardHash(effectiveFare, pickupKm, fromAddress, toAddress, null)
 
@@ -264,6 +273,20 @@ class InDriveReader(
                 }
             }
             return mapRect
+        }
+
+        // Fallback: the map view is often invisible to accessibility, so the id lookup finds nothing and
+        // the trip distance was never read. The map is simply everything above the bottom sheet.
+        val sheetNode = bottomSheetNode ?: findNodeById(root, "detail_container")
+        if (sheetNode != null) {
+            val sheetRect = Rect()
+            sheetNode.getBoundsInScreen(sheetRect)
+            val rootRect = Rect()
+            root.getBoundsInScreen(rootRect)
+            val top = rootRect.top + (rootRect.height() * 0.08f).toInt()
+            if (sheetRect.top - top > 200) {
+                return Rect(rootRect.left, top, rootRect.right, sheetRect.top)
+            }
         }
         return null
     }

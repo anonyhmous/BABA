@@ -94,6 +94,7 @@ class InDriveTripDistanceOcr(
         val minutes: Double?
     ) {
         var color: Int = 0 // 1 = lime, 2 = blue, 0 = unknown
+        var warmth: Float = 0f // (red+green)/2 - blue around the text: high = yellow/lime, low = blue
     }
 
     /**
@@ -154,7 +155,18 @@ class InDriveTripDistanceOcr(
         // 4. Choose the lime (trip) bubble by color, else by excluding the blue pickup bubble
         var chosen: Bubble? = null
         if (bitmap != null && !bitmap.isRecycled) {
-            sane.forEach { it.color = classifyColor(bitmap, it.box) }
+            sane.forEach { it.warmth = colorWarmth(bitmap, it.box) }
+            if (sane.size >= 2) {
+                // The trip bubble is the warmest one, the pickup bubble the coolest: compare, no fixed hues
+                val ranked = sane.sortedByDescending { it.warmth }
+                if (ranked[0].warmth - ranked[1].warmth > 30f) {
+                    ranked[0].color = 1
+                    ranked.drop(1).forEach { it.color = 2 }
+                }
+            } else if (sane.size == 1) {
+                val w = sane[0].warmth
+                sane[0].color = if (w > 40f) 1 else if (w < -20f) 2 else 0
+            }
             val lime = sane.filter { it.color == 1 }
             if (lime.isNotEmpty()) chosen = lime.maxByOrNull { it.km }
         }
@@ -246,8 +258,8 @@ class InDriveTripDistanceOcr(
         return lines.indices.groupBy { find(it) }.values.map { idx -> idx.map { lines[it] } }
     }
 
-    /** 1 = lime (trip bubble), 2 = blue (pickup bubble), 0 = unknown. Samples just outside the text box. */
-    private fun classifyColor(bitmap: Bitmap, box: Rect): Int {
+    /** (red+green)/2 - blue averaged just outside the text box. Lime ~ +190, blue ~ -150. */
+    private fun colorWarmth(bitmap: Bitmap, box: Rect): Float {
         val off = maxOf(6, box.height() / 5)
         val midX = (box.left + box.right) / 2
         val midY = (box.top + box.bottom) / 2
@@ -259,22 +271,12 @@ class InDriveTripDistanceOcr(
             box.left - off to box.top - off,
             box.right + off to box.bottom + off
         )
-        var r = 0L; var g = 0L; var b = 0L; var n = 0
+        var sum = 0f
         for ((x, y) in pts) {
-            val cx = x.coerceIn(0, bitmap.width - 1)
-            val cy = y.coerceIn(0, bitmap.height - 1)
-            val c = bitmap.getPixel(cx, cy)
-            r += Color.red(c); g += Color.green(c); b += Color.blue(c); n++
+            val c = bitmap.getPixel(x.coerceIn(0, bitmap.width - 1), y.coerceIn(0, bitmap.height - 1))
+            sum += (Color.red(c) + Color.green(c)) / 2f - Color.blue(c)
         }
-        if (n == 0) return 0
-        val hsv = FloatArray(3)
-        Color.RGBToHSV((r / n).toInt(), (g / n).toInt(), (b / n).toInt(), hsv)
-        val hue = hsv[0]; val sat = hsv[1]; val v = hsv[2]
-        return when {
-            hue in 60f..110f && sat > 0.45f && v > 0.6f -> 1
-            hue in 190f..250f && sat > 0.4f -> 2
-            else -> 0
-        }
+        return sum / pts.size
     }
 
     private fun parseFromBitmap(bitmap: Bitmap, regionFraction: RectF, mapBounds: Rect): TripKmResult {

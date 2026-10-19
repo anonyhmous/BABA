@@ -4,6 +4,9 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import kotlinx.coroutines.delay
+import com.driveflow.driver.core.util.AccessibilityStatus
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -104,7 +107,15 @@ fun HomeScreen(
     var showRestrictedDialog by remember { mutableStateOf(false) }
     var showBatteryGuideDialog by remember { mutableStateOf(false) }
 
-    val isAccessibilityGranted = readerEnabled
+    // Real system state, re-checked every second (the user comes back from Settings without any callback)
+    var isAccessibilityGranted by remember { mutableStateOf(AccessibilityStatus.isServiceEnabled(context)) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            isAccessibilityGranted = AccessibilityStatus.isServiceEnabled(context)
+            delay(1000L)
+        }
+    }
+    val readerActive = readerEnabled && isAccessibilityGranted
     val isOverlayGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(context) else true
     val isRulesConfigured = policy.minPricePerKm > 0.0
     val isSetupComplete = isAccessibilityGranted && isOverlayGranted && isRulesConfigured
@@ -171,12 +182,12 @@ fun HomeScreen(
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
-                containerColor = if (readerEnabled) GraphiteSurface else GraphiteSurfaceVariant
+                containerColor = if (readerActive) GraphiteSurface else GraphiteSurfaceVariant
             ),
             shape = RoundedCornerShape(20.dp),
             border = androidx.compose.foundation.BorderStroke(
                 1.5.dp,
-                if (readerEnabled) EmeraldGreen.copy(alpha = 0.7f) else SlateBorder
+                if (readerActive) EmeraldGreen.copy(alpha = 0.7f) else SlateBorder
             )
         ) {
             Row(
@@ -195,28 +206,28 @@ fun HomeScreen(
                             .size(48.dp)
                             .clip(CircleShape)
                             .background(
-                                if (readerEnabled) EmeraldGreen.copy(alpha = 0.2f) else SlateBorder.copy(alpha = 0.4f)
+                                if (readerActive) EmeraldGreen.copy(alpha = 0.2f) else SlateBorder.copy(alpha = 0.4f)
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.PowerSettingsNew,
                             contentDescription = null,
-                            tint = if (readerEnabled) EmeraldGreen else TextSilverGray,
+                            tint = if (readerActive) EmeraldGreen else TextSilverGray,
                             modifier = Modifier.size(28.dp)
                         )
                     }
                     Spacer(modifier = Modifier.width(14.dp))
                     Column {
                         Text(
-                            text = if (readerEnabled) stringResource(R.string.home_hero_on) else stringResource(R.string.home_hero_off),
+                            text = if (readerActive) stringResource(R.string.home_hero_on) else stringResource(R.string.home_hero_off),
                             style = MaterialTheme.typography.titleMedium,
                             color = TextBrightWhite,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = if (readerEnabled) stringResource(R.string.home_hero_sub_on) else stringResource(R.string.home_hero_sub_off),
+                            text = if (readerActive) stringResource(R.string.home_hero_sub_on) else stringResource(R.string.home_hero_sub_off),
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSilverGray
                         )
@@ -224,12 +235,15 @@ fun HomeScreen(
                 }
 
                 Switch(
-                    checked = readerEnabled,
+                    checked = readerActive,
                     onCheckedChange = { isChecked ->
-                        if (isChecked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isAccessibilityGranted) {
-                            showRestrictedDialog = true
-                        } else {
-                            onToggleReader(isChecked)
+                        onToggleReader(isChecked)
+                        if (isChecked && !isAccessibilityGranted) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                showRestrictedDialog = true
+                            } else {
+                                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                            }
                         }
                     },
                     colors = SwitchDefaults.colors(

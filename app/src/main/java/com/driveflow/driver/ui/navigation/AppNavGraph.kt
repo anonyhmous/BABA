@@ -100,7 +100,7 @@ fun AppNavGraph(
     val diagnosticsCounters by settingsStore.diagnosticsCountersFlow.collectAsState(initial = emptyMap())
     val ocrCalibrations by settingsStore.ocrCalibrationFlow.collectAsState(initial = emptyMap())
 
-    var readerEnabled by remember { mutableStateOf(false) }
+    val readerEnabled by settingsStore.readerEnabledFlow.collectAsState(initial = true)
 
     val startDestination = remember(welcomeSeen, consentVersion, contactName) {
         when {
@@ -267,7 +267,7 @@ fun AppNavGraph(
                     freeListRemaining = AppGraph.freeDailyList,
                     freeDetailsRemaining = AppGraph.freeDailyDetails,
                     readerEnabled = readerEnabled,
-                    onToggleReader = { readerEnabled = it },
+                    onToggleReader = { scope.launch { settingsStore.setReaderEnabled(it) } },
                     onToggleAlert = { scope.launch { settingsStore.setAlertEnabled(it) } },
                     onToggleHeadingHome = { scope.launch { settingsStore.setHomeWay(homeWay.copy(enabled = it)) } },
                     onToggleAppEnabled = { app, isEnabled ->

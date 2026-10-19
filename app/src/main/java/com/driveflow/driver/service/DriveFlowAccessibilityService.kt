@@ -66,6 +66,9 @@ class DriveFlowAccessibilityService : AccessibilityService() {
     @Volatile
     private var currentConsentVersion: Int = 0
 
+    @Volatile
+    private var readerEnabled: Boolean = true
+
     // inDrive trip-distance cache + OCR retry bookkeeping (touched only while processingMutex is held)
     private val tripKmCache = object : LinkedHashMap<String, Double>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Double>?): Boolean = size > 20
@@ -128,6 +131,12 @@ class DriveFlowAccessibilityService : AccessibilityService() {
         serviceScope.launch {
             store.licenseTokenFlow.collectLatest { token ->
                 cachedLicenseStatus = if (token.isNullOrBlank()) LicenseStatus.FREE else LicenseStatus.ACTIVE
+            }
+        }
+        serviceScope.launch {
+            store.readerEnabledFlow.collectLatest { enabled ->
+                readerEnabled = enabled
+                if (!enabled) overlayManager?.hideAll()
             }
         }
         serviceScope.launch {
@@ -197,6 +206,12 @@ class DriveFlowAccessibilityService : AccessibilityService() {
     private suspend fun processCurrentScreen() {
         if (!processingMutex.tryLock()) return
         try {
+            // Power switch on the home screen: when off, read nothing and show nothing
+            if (!readerEnabled) {
+                overlayManager?.hideAll()
+                return
+            }
+
             // Refuse to read unless consentVersion >= 1
             if (currentConsentVersion < 1) {
                 overlayManager?.hideAll()

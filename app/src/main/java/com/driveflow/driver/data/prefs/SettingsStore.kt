@@ -87,6 +87,7 @@ class SettingsStore(private val context: Context) {
         private val KEY_BAR_POSITION = stringPreferencesKey("bar_position")
         private val KEY_AUTO_OFF_HOURS = intPreferencesKey("auto_off_hours")
         private val KEY_ALERT_ENABLED = booleanPreferencesKey("alert_enabled")
+        private val KEY_READER_ENABLED = booleanPreferencesKey("reader_enabled")
         private val KEY_ALERT_MODE = stringPreferencesKey("alert_mode")
         private val KEY_HOME_WAY = stringPreferencesKey("home_way")
         private val KEY_CONSENT_VERSION = intPreferencesKey("consent_version")
@@ -218,6 +219,16 @@ class SettingsStore(private val context: Context) {
     suspend fun setAutoOffHours(hours: Int) {
         dataStore.edit { prefs ->
             prefs[KEY_AUTO_OFF_HOURS] = hours
+        }
+    }
+
+    val readerEnabledFlow: Flow<Boolean> = preferencesFlow.map { prefs ->
+        prefs[KEY_READER_ENABLED] ?: true
+    }
+
+    suspend fun setReaderEnabled(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[KEY_READER_ENABLED] = enabled
         }
     }
 

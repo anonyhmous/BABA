@@ -30,6 +30,13 @@ class TextParsersTest {
     }
 
     @Test
+    fun testNormalizeDigits_anyScript() {
+        assertEquals("12.5 km", TextParsers.normalizeDigits("१२.५ km"))
+        assertEquals("340", TextParsers.normalizeDigits("৩৪০"))
+        assertEquals("21", TextParsers.normalizeDigits("٢١"))
+    }
+
+    @Test
     fun testParseNumber() {
         assertEquals(1250.0, TextParsers.parseNumber("1,250")!!, 0.001)
         assertEquals(1250.0, TextParsers.parseNumber("1.250")!!, 0.001)
